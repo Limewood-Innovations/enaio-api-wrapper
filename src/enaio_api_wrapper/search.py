@@ -215,22 +215,23 @@ async def search_doc_we(
     sort_by: str | None = None,
     sort_order: str = "DESC",
     maxhits: int = 1,
+    extra_filters: dict[str, str] | None = None,
 ) -> SearchResult | None:
-    """Search verified documents of ``doc_type`` filtered by WE cabinet
+    """Search documents of ``doc_type`` filtered by WE cabinet
     (``BKRS`` + ``WE``).
 
-    Always filters ``Verifiziert=1`` (matching the convention of
-    ``search_doc_gs`` / ``_bp`` / ``_cn``). Unverified documents are
-    excluded — Alpenland's editorial workflow marks a document as
-    "verifiziert" once it has been QA'd; the doc_search portal pipeline
-    must only collect those.
+    ``extra_filters`` is an optional ``dict[str, str]`` that the caller
+    can use to apply additional ``fields`` constraints on the document
+    side of the query (e.g. ``{"Verifiziert": "1"}`` for the Alpenland
+    portal-side rule "only QA'd documents"). The wrapper itself stays
+    business-rule-free.
     """
     client.logger.debug("search_doc_we BKRS=%s WE=%s", bkrs, swenr)
     query = {
         "objectTypeId": str(object_type_id_doc),
         "fields": {
             "Unterlagenart": {"value": str(doc_type)},
-            "Verifiziert": {"value": "1"},
+            **{k: {"value": v} for k, v in (extra_filters or {}).items()},
         },
     }
     additional = [
@@ -264,15 +265,16 @@ async def search_doc_gs(
     sort_by: str | None = None,
     sort_order: str = "DESC",
     maxhits: int = 0,
+    extra_filters: dict[str, str] | None = None,
 ) -> SearchResult | None:
-    """Search verified documents of ``doc_type`` filtered by GS cabinet
+    """Search documents of ``doc_type`` filtered by GS cabinet
     (``BKRS`` + ``Projekt WE``)."""
     client.logger.debug("search_doc_gs BKRS=%s ProjektWE=%s", bkrs, swenr)
     query = {
         "objectTypeId": str(object_type_id_doc),
         "fields": {
             "Unterlagenart": {"value": str(doc_type)},
-            "Verifiziert": {"value": "1"},
+            **{k: {"value": v} for k, v in (extra_filters or {}).items()},
         },
     }
     additional = [
@@ -307,19 +309,19 @@ async def search_doc_mo(
     sort_by: str | None = None,
     sort_order: str = "DESC",
     maxhits: int = 1,
+    extra_filters: dict[str, str] | None = None,
 ) -> SearchResult | None:
-    """Search verified documents of ``doc_type`` filtered by MO cabinet
+    """Search documents of ``doc_type`` filtered by MO cabinet
     (``BKRS`` + ``WE`` + ``MONummer``).
 
-    Always filters ``Verifiziert=1`` (matching the convention of the
-    other search_doc_* helpers).
+    See :func:`search_doc_we` for ``extra_filters`` semantics.
     """
     client.logger.debug("search_doc_mo BKRS=%s WE=%s MO=%s", bkrs, swenr, smenr)
     query = {
         "objectTypeId": str(object_type_id_doc),
         "fields": {
             "Unterlagenart": {"value": str(doc_type)},
-            "Verifiziert": {"value": "1"},
+            **{k: {"value": v} for k, v in (extra_filters or {}).items()},
         },
     }
     additional = [
@@ -353,15 +355,16 @@ async def search_doc_bp(
     sort_by: str | None = None,
     sort_order: str = "DESC",
     maxhits: int = 0,
+    extra_filters: dict[str, str] | None = None,
 ) -> SearchResult | None:
-    """Search verified documents of ``doc_type`` filtered by business-partner
+    """Search documents of ``doc_type`` filtered by business-partner
     (``GP Nummer``)."""
     client.logger.debug("search_doc_bp GP=%s", bpnr)
     query = {
         "objectTypeId": str(object_type_id_doc),
         "fields": {
             "Unterlagenart": {"value": str(doc_type)},
-            "Verifiziert": {"value": "1"},
+            **{k: {"value": v} for k, v in (extra_filters or {}).items()},
         },
     }
     additional = [
@@ -392,15 +395,16 @@ async def search_doc_cn(
     sort_by: str | None = None,
     sort_order: str = "DESC",
     maxhits: int = 0,
+    extra_filters: dict[str, str] | None = None,
 ) -> SearchResult | None:
-    """Search verified documents of ``doc_type`` filtered by contract cabinet
+    """Search documents of ``doc_type`` filtered by contract cabinet
     (``Vertrag`` + ``Buchungskreis``)."""
     client.logger.debug("search_doc_cn Vertrag=%s BKRS=%s", recnnr, bkrs)
     query = {
         "objectTypeId": str(object_type_id_doc),
         "fields": {
             "Unterlagenart": {"value": str(doc_type)},
-            "Verifiziert": {"value": "1"},
+            **{k: {"value": v} for k, v in (extra_filters or {}).items()},
         },
     }
     additional = [
