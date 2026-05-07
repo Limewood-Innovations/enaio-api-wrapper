@@ -103,7 +103,12 @@ async def basic_doc_search(
     if fieldsschema is not None:
         result_config["fieldsschema_mode"] = fieldsschema_mode
         result_config["fieldsschema"] = fieldsschema
-    elif sort_by is not None:
+    elif sort_by:
+        # Truthy check (not "is not None"): empty string "" must NOT
+        # become an internalName, because Enaio's
+        # FieldSchemaItem.assertNotNull treats "" as null and returns
+        # HTTP 500 ``Search by example failed`` with a Java stack
+        # trace. Empty / None / 0 / falsy → no sort schema at all.
         result_config["fieldsschema_mode"] = "ALL"
         result_config["fieldsschema"] = [
             {"internalName": str(sort_by), "sort_pos": 1, "sort_order": str(sort_order)}
