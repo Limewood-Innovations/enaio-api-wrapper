@@ -216,11 +216,22 @@ async def search_doc_we(
     sort_order: str = "DESC",
     maxhits: int = 1,
 ) -> SearchResult | None:
-    """Search documents of ``doc_type`` filtered by WE cabinet (``BKRS`` + ``WE``)."""
+    """Search verified documents of ``doc_type`` filtered by WE cabinet
+    (``BKRS`` + ``WE``).
+
+    Always filters ``Verifiziert=1`` (matching the convention of
+    ``search_doc_gs`` / ``_bp`` / ``_cn``). Unverified documents are
+    excluded — Alpenland's editorial workflow marks a document as
+    "verifiziert" once it has been QA'd; the doc_search portal pipeline
+    must only collect those.
+    """
     client.logger.debug("search_doc_we BKRS=%s WE=%s", bkrs, swenr)
     query = {
         "objectTypeId": str(object_type_id_doc),
-        "fields": {"Unterlagenart": {"value": str(doc_type)}},
+        "fields": {
+            "Unterlagenart": {"value": str(doc_type)},
+            "Verifiziert": {"value": "1"},
+        },
     }
     additional = [
         {
@@ -297,12 +308,19 @@ async def search_doc_mo(
     sort_order: str = "DESC",
     maxhits: int = 1,
 ) -> SearchResult | None:
-    """Search documents of ``doc_type`` filtered by MO cabinet
-    (``BKRS`` + ``WE`` + ``MONummer``)."""
+    """Search verified documents of ``doc_type`` filtered by MO cabinet
+    (``BKRS`` + ``WE`` + ``MONummer``).
+
+    Always filters ``Verifiziert=1`` (matching the convention of the
+    other search_doc_* helpers).
+    """
     client.logger.debug("search_doc_mo BKRS=%s WE=%s MO=%s", bkrs, swenr, smenr)
     query = {
         "objectTypeId": str(object_type_id_doc),
-        "fields": {"Unterlagenart": {"value": str(doc_type)}},
+        "fields": {
+            "Unterlagenart": {"value": str(doc_type)},
+            "Verifiziert": {"value": "1"},
+        },
     }
     additional = [
         {
