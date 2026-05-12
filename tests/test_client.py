@@ -15,6 +15,9 @@ from enaio_api_wrapper import (
     EnaioNotFoundError,
 )
 
+# JPEG SOI marker — used as opaque body in download_thumbnail tests
+_JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF"
+
 
 async def test_serviceinfo_ok(aresponses: ResponsesMockServer, client: AsyncEnaioClient) -> None:
     aresponses.add(
@@ -105,6 +108,118 @@ async def test_call_without_async_with_raises() -> None:
     )
     with pytest.raises(EnaioConfigError):
         await c.serviceinfo()
+
+
+async def test_download_thumbnail_returns_bytes(
+    aresponses: ResponsesMockServer, client: AsyncEnaioClient
+) -> None:
+    aresponses.add(
+        "test.invalid",
+        "/osrenditioncache/app/api/document/42/rendition/thumbnail/1200",
+        "GET",
+        aresponses.Response(status=200, body=_JPEG_BYTES),
+    )
+    blob = await client.download_thumbnail(42)
+    assert blob == _JPEG_BYTES
+
+
+async def test_download_thumbnail_custom_size_in_path(
+    aresponses: ResponsesMockServer, client: AsyncEnaioClient
+) -> None:
+    aresponses.add(
+        "test.invalid",
+        "/osrenditioncache/app/api/document/42/rendition/thumbnail/800",
+        "GET",
+        aresponses.Response(status=200, body=_JPEG_BYTES),
+    )
+    blob = await client.download_thumbnail(42, size=800)
+    assert blob == _JPEG_BYTES
+
+
+async def test_download_thumbnail_sends_default_12s_timeout_query(
+    aresponses: ResponsesMockServer, client: AsyncEnaioClient
+) -> None:
+    # The ?timeout=12000 server-side rendering hint is critical — Enaio uses
+    # it to decide how long to wait for the rendition to materialise. Mirrors
+    # the value v2 production pinned at commit 9ed8179.
+    captured: dict[str, str] = {}
+
+    async def handler(request):
+        captured.update(request.query)
+        return aresponses.Response(status=200, body=_JPEG_BYTES)
+
+    aresponses.add(
+        "test.invalid",
+        "/osrenditioncache/app/api/document/42/rendition/thumbnail/1200",
+        "GET",
+        handler,
+    )
+    await client.download_thumbnail(42)
+    assert captured.get("timeout") == "12000"
+
+
+async def test_download_thumbnail_custom_timeout_query(
+    aresponses: ResponsesMockServer, client: AsyncEnaioClient
+) -> None:
+    captured: dict[str, str] = {}
+
+    async def handler(request):
+        captured.update(request.query)
+        return aresponses.Response(status=200, body=_JPEG_BYTES)
+
+    aresponses.add(
+        "test.invalid",
+        "/osrenditioncache/app/api/document/42/rendition/thumbnail/1200",
+        "GET",
+        handler,
+    )
+    await client.download_thumbnail(42, timeout_ms=30000)
+    assert captured.get("timeout") == "30000"
+
+
+async def test_download_thumbnail_rejects_non_positive_size(
+    client: AsyncEnaioClient,
+) -> None:
+    with pytest.raises(EnaioConfigError):
+        await client.download_thumbnail(42, size=0)
+    with pytest.raises(EnaioConfigError):
+        await client.download_thumbnail(42, size=-1)
+
+
+async def test_download_thumbnail_rejects_non_positive_timeout(
+    client: AsyncEnaioClient,
+) -> None:
+    with pytest.raises(EnaioConfigError):
+        await client.download_thumbnail(42, timeout_ms=0)
+    with pytest.raises(EnaioConfigError):
+        await client.download_thumbnail(42, timeout_ms=-1)
+
+
+async def test_download_thumbnail_requires_rendition_cache_url() -> None:
+    # Construct a client without rendition_cache_url_base and confirm the
+    # missing-config error surfaces (matches download_pdf's behaviour).
+    async with AsyncEnaioClient(
+        host="http://test.invalid/",
+        api_url_base="osrest/api/",
+        username="u",
+        password="p",
+        timeout=5.0,
+    ) as c:
+        with pytest.raises(EnaioConfigError):
+            await c.download_thumbnail(42)
+
+
+async def test_download_thumbnail_propagates_404(
+    aresponses: ResponsesMockServer, client: AsyncEnaioClient
+) -> None:
+    aresponses.add(
+        "test.invalid",
+        "/osrenditioncache/app/api/document/9/rendition/thumbnail/1200",
+        "GET",
+        aresponses.Response(status=404, text="missing"),
+    )
+    with pytest.raises(EnaioNotFoundError):
+        await client.download_thumbnail(9)
 
 
 async def test_not_found_subclasses_http_error(
