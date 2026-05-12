@@ -17,6 +17,8 @@ from enaio_api_wrapper import (
 
 # JPEG SOI marker — used as opaque body in download_thumbnail tests
 _JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF"
+# PDF magic header — opaque body in download_pdf tests
+_PDF_BYTES = b"%PDF-1.7\n%\xe2\xe3\xcf\xd3"
 
 
 async def test_serviceinfo_ok(aresponses: ResponsesMockServer, client: AsyncEnaioClient) -> None:
@@ -108,6 +110,134 @@ async def test_call_without_async_with_raises() -> None:
     )
     with pytest.raises(EnaioConfigError):
         await c.serviceinfo()
+
+
+# --- download_pdf -----------------------------------------------------------
+#
+# Regression tests for the bug where ``download_pdf`` was issuing
+# ``GET .../rendition/pdf/`` (trailing slash, no ``?timeout=``) instead of
+# the v2 production shape ``GET .../rendition/pdf?timeout=30000``. Without
+# the timeout hint Enaio's rendition cache 404s immediately on cache-miss
+# with ``cause=cannot find resource for digest [...#pdf]`` instead of
+# triggering / awaiting the renderer. download_thumbnail had this
+# parameter from the start of v3; download_pdf regressed.
+
+
+async def test_download_pdf_returns_bytes(
+    aresponses: ResponsesMockServer, client: AsyncEnaioClient
+) -> None:
+    aresponses.add(
+        "test.invalid",
+        "/osrenditioncache/app/api/document/42/rendition/pdf",
+        "GET",
+        aresponses.Response(status=200, body=_PDF_BYTES),
+    )
+    blob = await client.download_pdf(42)
+    assert blob == _PDF_BYTES
+
+
+async def test_download_pdf_url_has_no_trailing_slash(
+    aresponses: ResponsesMockServer, client: AsyncEnaioClient
+) -> None:
+    """Regression: v3.3.0 hit ``.../rendition/pdf/`` (trailing slash) which
+    some Java servlet containers route as a distinct path. v2 production
+    URL ended at ``.../rendition/pdf`` with no slash — restore that."""
+    seen_paths: list[str] = []
+
+    async def handler(request):
+        seen_paths.append(request.path)
+        return aresponses.Response(status=200, body=_PDF_BYTES)
+
+    aresponses.add(
+        "test.invalid",
+        "/osrenditioncache/app/api/document/42/rendition/pdf",
+        "GET",
+        handler,
+    )
+    await client.download_pdf(42)
+    assert seen_paths, "handler never fired — request did not match path"
+    assert all(not p.endswith("/rendition/pdf/") for p in seen_paths), (
+        f"PDF URL must not end with trailing slash; saw {seen_paths!r}"
+    )
+
+
+async def test_download_pdf_sends_default_30s_timeout_query(
+    aresponses: ResponsesMockServer, client: AsyncEnaioClient
+) -> None:
+    """Regression: v3.3.0 dropped ``?timeout=N`` entirely. Without it
+    Enaio's rendition cache returns 404 on cache-miss instead of
+    triggering / awaiting the renderer. 30000 ms matches the v2 client's
+    pinned production value."""
+    captured: dict[str, str] = {}
+
+    async def handler(request):
+        captured.update(request.query)
+        return aresponses.Response(status=200, body=_PDF_BYTES)
+
+    aresponses.add(
+        "test.invalid",
+        "/osrenditioncache/app/api/document/42/rendition/pdf",
+        "GET",
+        handler,
+    )
+    await client.download_pdf(42)
+    assert captured.get("timeout") == "30000"
+
+
+async def test_download_pdf_custom_timeout_query(
+    aresponses: ResponsesMockServer, client: AsyncEnaioClient
+) -> None:
+    captured: dict[str, str] = {}
+
+    async def handler(request):
+        captured.update(request.query)
+        return aresponses.Response(status=200, body=_PDF_BYTES)
+
+    aresponses.add(
+        "test.invalid",
+        "/osrenditioncache/app/api/document/42/rendition/pdf",
+        "GET",
+        handler,
+    )
+    await client.download_pdf(42, timeout_ms=60000)
+    assert captured.get("timeout") == "60000"
+
+
+async def test_download_pdf_rejects_non_positive_timeout(
+    client: AsyncEnaioClient,
+) -> None:
+    with pytest.raises(EnaioConfigError):
+        await client.download_pdf(42, timeout_ms=0)
+    with pytest.raises(EnaioConfigError):
+        await client.download_pdf(42, timeout_ms=-1)
+
+
+async def test_download_pdf_requires_rendition_cache_url() -> None:
+    async with AsyncEnaioClient(
+        host="http://test.invalid/",
+        api_url_base="osrest/api/",
+        username="u",
+        password="p",
+        timeout=5.0,
+    ) as c:
+        with pytest.raises(EnaioConfigError):
+            await c.download_pdf(42)
+
+
+async def test_download_pdf_propagates_404(
+    aresponses: ResponsesMockServer, client: AsyncEnaioClient
+) -> None:
+    aresponses.add(
+        "test.invalid",
+        "/osrenditioncache/app/api/document/9/rendition/pdf",
+        "GET",
+        aresponses.Response(status=404, text="missing"),
+    )
+    with pytest.raises(EnaioNotFoundError):
+        await client.download_pdf(9)
+
+
+# --- download_thumbnail -----------------------------------------------------
 
 
 async def test_download_thumbnail_returns_bytes(
