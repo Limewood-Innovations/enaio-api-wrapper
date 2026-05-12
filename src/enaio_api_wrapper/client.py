@@ -337,10 +337,43 @@ class AsyncEnaioClient:
         except EnaioNotFoundError:
             return None
 
-    async def download_pdf(self, osid: int | str) -> bytes:
-        """Download the PDF rendition of ``osid`` as bytes."""
+    async def download_pdf(
+        self,
+        osid: int | str,
+        *,
+        timeout_ms: int = 30000,
+    ) -> bytes:
+        """Download the PDF rendition of ``osid`` as bytes.
+
+        Args:
+            osid: OSID of the document.
+            timeout_ms: Server-side rendering timeout hint passed via the
+                ``?timeout=`` query parameter, in milliseconds (default
+                30000 = 30 s). This tells Enaio's rendition cache how
+                long to wait for the renderer to produce the PDF before
+                responding; it is NOT the HTTP client timeout. The 30000
+                default mirrors the value the legacy v2 client always
+                used in production. Without it, Enaio returns 404 with
+                ``cannot find resource for digest [...#pdf]`` on
+                cache-miss instead of triggering / awaiting the renderer.
+                Pass a larger value for slow renditions (large PDFs,
+                busy renderer).
+
+        Returns:
+            Raw PDF bytes.
+
+        Raises:
+            EnaioConfigError: when ``rendition_cache_url_base`` is not
+                set, or when ``timeout_ms`` is not a positive int.
+            EnaioAuthError / EnaioNotFoundError / EnaioHTTPError: on non-2xx.
+        """
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise EnaioConfigError(
+                f"'timeout_ms' must be a positive int, got {timeout_ms!r}"
+            )
         return await self.get_bytes(
-            self.rendition_url(f"document/{osid}/rendition/pdf/")
+            self.rendition_url(f"document/{osid}/rendition/pdf"),
+            params={"timeout": timeout_ms},
         )
 
     async def download_thumbnail(
