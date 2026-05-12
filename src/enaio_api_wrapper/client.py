@@ -343,6 +343,48 @@ class AsyncEnaioClient:
             self.rendition_url(f"document/{osid}/rendition/pdf/")
         )
 
+    async def download_thumbnail(
+        self,
+        osid: int | str,
+        *,
+        size: int = 1200,
+        timeout_ms: int = 12000,
+    ) -> bytes:
+        """Download the JPEG thumbnail rendition of ``osid`` as bytes.
+
+        Args:
+            osid: OSID of the document.
+            size: Max pixel dimension of the thumbnail (default 1200). Enaio
+                generates a JPEG at this resolution server-side.
+            timeout_ms: Server-side rendering timeout hint passed via the
+                ``?timeout=`` query parameter, in milliseconds (default 12000
+                = 12 s). This tells Enaio how long to wait for the rendition
+                to be ready before returning; it is NOT the HTTP client
+                timeout. The 12000 default mirrors the value the legacy v2
+                client used in production. Pass a larger value for slow
+                renditions (Enaio v2 production has used 30000 historically).
+
+        Returns:
+            Raw JPEG bytes.
+
+        Raises:
+            EnaioConfigError: when ``rendition_cache_url_base`` is not set,
+                or when ``size`` / ``timeout_ms`` is not a positive int.
+            EnaioAuthError / EnaioNotFoundError / EnaioHTTPError: on non-2xx.
+        """
+        if not isinstance(size, int) or size <= 0:
+            raise EnaioConfigError(
+                f"'size' must be a positive int, got {size!r}"
+            )
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise EnaioConfigError(
+                f"'timeout_ms' must be a positive int, got {timeout_ms!r}"
+            )
+        return await self.get_bytes(
+            self.rendition_url(f"document/{osid}/rendition/thumbnail/{size}"),
+            params={"timeout": timeout_ms},
+        )
+
     async def download_zip(self, osid: int | str) -> bytes:
         """Download the original file of ``osid`` as a zip."""
         return await self.get_bytes(self.url(f"documentfiles/{osid}/zip"))
